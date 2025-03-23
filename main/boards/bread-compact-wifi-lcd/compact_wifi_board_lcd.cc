@@ -152,6 +152,7 @@ private:
             thing_manager.AddThing(iot::CreateThing("Backlight"));
         }
         thing_manager.AddThing(iot::CreateThing("TemperatureSensor"));
+        thing_manager.AddThing(iot::CreateThing("TdsSensor"));
     }
 
 public:
