@@ -61,6 +61,8 @@ void Thing::Invoke(const cJSON* command) {
                 param.set_string(input_param->valuestring);
             } else if (param.type() == kValueTypeBoolean) {
                 param.set_boolean(input_param->valueint == 1);
+            } else if (param.type() == kValueTypeFloat) {
+                param.set_float(input_param->valuedouble);
             }
         }
 

@@ -13,7 +13,8 @@ namespace iot {
 enum ValueType {
     kValueTypeBoolean,
     kValueTypeNumber,
-    kValueTypeString
+    kValueTypeString,
+    kValueTypeFloat
 };
 
 class Property {
@@ -24,6 +25,7 @@ private:
     std::function<bool()> boolean_getter_;
     std::function<int()> number_getter_;
     std::function<std::string()> string_getter_;
+    std::function<float()> float_getter_;
 
 public:
     Property(const std::string& name, const std::string& description, std::function<bool()> getter) :
@@ -32,6 +34,8 @@ public:
         name_(name), description_(description), type_(kValueTypeNumber), number_getter_(getter) {}
     Property(const std::string& name, const std::string& description, std::function<std::string()> getter) :
         name_(name), description_(description), type_(kValueTypeString), string_getter_(getter) {}
+    Property(const std::string& name, const std::string& description, std::function<float()> getter) :
+        name_(name), description_(description), type_(kValueTypeFloat), float_getter_(getter) {}
 
     const std::string& name() const { return name_; }
     const std::string& description() const { return description_; }
@@ -40,6 +44,7 @@ public:
     bool boolean() const { return boolean_getter_(); }
     int number() const { return number_getter_(); }
     std::string string() const { return string_getter_(); }
+    float floating() const { return float_getter_(); }
 
     std::string GetDescriptorJson() {
         std::string json_str = "{";
@@ -50,6 +55,8 @@ public:
             json_str += "\"type\":\"number\"";
         } else if (type_ == kValueTypeString) {
             json_str += "\"type\":\"string\"";
+        } else if (type_ == kValueTypeFloat) {
+            json_str += "\"type\":\"float\"";
         }
         json_str += "}";
         return json_str;
@@ -62,6 +69,8 @@ public:
             return std::to_string(number_getter_());
         } else if (type_ == kValueTypeString) {
             return "\"" + string_getter_() + "\"";
+        } else if (type_ == kValueTypeFloat) {
+            return std::to_string(float_getter_());
         }
         return "null";
     }
@@ -82,6 +91,9 @@ public:
         properties_.push_back(Property(name, description, getter));
     }
     void AddStringProperty(const std::string& name, const std::string& description, std::function<std::string()> getter) {
+        properties_.push_back(Property(name, description, getter));
+    }
+    void AddFloatProperty(const std::string& name, const std::string& description, std::function<float()> getter) {
         properties_.push_back(Property(name, description, getter));
     }
 
@@ -128,6 +140,7 @@ private:
     bool boolean_;
     int number_;
     std::string string_;
+    float float_;
 
 public:
     Parameter(const std::string& name, const std::string& description, ValueType type, bool required = true) :
@@ -141,10 +154,12 @@ public:
     bool boolean() const { return boolean_; }
     int number() const { return number_; }
     const std::string& string() const { return string_; }
+    float floating() const { return float_; }
 
     void set_boolean(bool value) { boolean_ = value; }
     void set_number(int value) { number_ = value; }
     void set_string(const std::string& value) { string_ = value; }
+    void set_float(float value) { float_ = value; }
 
     std::string GetDescriptorJson() {
         std::string json_str = "{";
@@ -155,6 +170,8 @@ public:
             json_str += "\"type\":\"number\"";
         } else if (type_ == kValueTypeString) {
             json_str += "\"type\":\"string\"";
+        } else if (type_ == kValueTypeFloat) {
+            json_str += "\"type\":\"float\"";
         }
         json_str += "}";
         return json_str;
