@@ -50,6 +50,15 @@ bool ThingManager::GetStatesJson(std::string& json, bool delta) {
     return changed;
 }
 
+std::string ThingManager::GetThingStateJson(std::string name) {
+    for (auto& thing : things_) {
+        if (thing->name() == name) {
+            return thing->GetStateJson();
+        }
+    }
+    return "{}";
+}
+
 void ThingManager::Invoke(const cJSON* command) {
     auto name = cJSON_GetObjectItem(command, "name");
     for (auto& thing : things_) {

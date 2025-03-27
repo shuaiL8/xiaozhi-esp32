@@ -112,7 +112,7 @@ public:
         xTaskCreate(SensorTask, "temp_task", 4096, this, 5, &sensor_task_);
 
         // 定义设备属性
-        properties_.AddFloatProperty("temperature", "当前水温值°C", [this]() -> float {
+        properties_.AddFloatProperty("temperature", "当前水温值，保留两个小数点，单位°C", [this]() -> float {
             return temperature_;
         });
 
