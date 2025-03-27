@@ -155,6 +155,7 @@ private:
         thing_manager.AddThing(iot::CreateThing("Lamp"));
         thing_manager.AddThing(iot::CreateThing("TemperatureSensor"));
         thing_manager.AddThing(iot::CreateThing("TdsSensor"));
+        thing_manager.AddThing(iot::CreateThing("Timer"));
     }
 
 public:
