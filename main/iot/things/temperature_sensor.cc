@@ -100,7 +100,7 @@ private:
             float temp = sensor->ReadTemperature();
             sensor->temperature_ = temp;
             ESP_LOGI(TAG, "当前温度: %.2f°C", temp);
-            vTaskDelay(pdMS_TO_TICKS(2000));
+            vTaskDelay(pdMS_TO_TICKS(2000)); // 2秒间隔
         }
     }
 

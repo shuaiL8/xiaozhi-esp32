@@ -154,9 +154,11 @@ private:
         thing_manager.AddThing(iot::CreateThing("Screen"));
         thing_manager.AddThing(iot::CreateThing("Lamp"));
         thing_manager.AddThing(iot::CreateThing("TemperatureSensor"));
+        thing_manager.AddThing(iot::CreateThing("Timer"));
+        // ADC Sensor
+        thing_manager.InitializeADC();
         thing_manager.AddThing(iot::CreateThing("TdsSensor"));
         thing_manager.AddThing(iot::CreateThing("PhSensor"));
-        thing_manager.AddThing(iot::CreateThing("Timer"));
     }
 
 public:

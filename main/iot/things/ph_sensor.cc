@@ -19,8 +19,8 @@ namespace iot {
 
 class PhSensor : public Thing {
 private:
-    adc_channel_t ph_channel_ = ADC_CHANNEL_1;    // pH模拟输入（GPIO2）
-    adc_oneshot_unit_handle_t adc_handle_ = nullptr;
+    adc_channel_t adc_channel_ = ADC_CHANNEL_1;    // pH模拟输入（GPIO2）
+    adc_oneshot_unit_handle_t adc_handle_ = nullptr;  // ADC oneshot句柄
     float ph_value_ = 7.0f;
     float ph_voltage_ = 0.0f;
     float temp_voltage_ = 0.0f;
@@ -28,20 +28,18 @@ private:
     float calibration_slope_ = 0.01786f; // 默认斜率3.3V/14pH=0.2357V/pH
     TaskHandle_t sensor_task_ = nullptr;
 
-    void InitializeADC() {
-        adc_oneshot_unit_init_cfg_t init_config = {
-            .unit_id = ADC_UNIT_1,
-            .ulp_mode = ADC_ULP_MODE_DISABLE
-        };
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle_));
+    void InitializePHChannel() {
+        auto& thing_manager = iot::ThingManager::GetInstance();
+        adc_handle_ = thing_manager.adc_handle_;
 
+        // 配置通道参数
         adc_oneshot_chan_cfg_t channel_config = {
             .atten = ADC_ATTEN_DB_11,
-            .bitwidth = ADC_BITWIDTH_12
+            .bitwidth = ADC_BITWIDTH_12  // 12位精度
         };
 
         ESP_ERROR_CHECK(adc_oneshot_config_channel(
-            adc_handle_, ph_channel_, &channel_config));
+            adc_handle_, adc_channel_, &channel_config));
     }
 
     float GetTemperature() {
@@ -75,11 +73,11 @@ private:
         return temperature;
     }
 
-    float ReadVoltage(adc_channel_t channel) {
+    float ReadVoltage() {
         int adc_reading = 0;
         for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
             int raw = 0;
-            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, channel, &raw));
+            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, adc_channel_, &raw));
             adc_reading += raw;
         }
         adc_reading /= ADC_SAMPLE_COUNT;
@@ -87,9 +85,7 @@ private:
     }
 
     void UpdatePhValue() {
-        ph_voltage_ = ReadVoltage(ph_channel_);
-
-        // 温度转换（假设LM35传感器，10mV/°C）
+        ph_voltage_ = ReadVoltage(); 
         float temperature_ = GetTemperature();
 
         // 基础pH计算（根据传感器特性调整公式）
@@ -125,7 +121,7 @@ private:
 
 public:
     PhSensor() : Thing("PhSensor", "水质pH传感器") {
-        InitializeADC();
+        InitializePHChannel();
 
         xTaskCreate(SensorTask, "ph_task", 4096, this, 5, &sensor_task_);
 
@@ -153,7 +149,7 @@ public:
 
     ~PhSensor() {
         if (sensor_task_) vTaskDelete(sensor_task_);
-        if (adc_handle_) adc_oneshot_del_unit(adc_handle_);
+        if (adc_handle_) adc_oneshot_del_unit(adc_handle_);  // 释放ADC资源
     }
 };
 

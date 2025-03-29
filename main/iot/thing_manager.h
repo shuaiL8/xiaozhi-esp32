@@ -10,6 +10,7 @@
 #include <memory>
 #include <functional>
 #include <map>
+#include "esp_adc/adc_oneshot.h"
 
 namespace iot {
 
@@ -24,10 +25,13 @@ public:
 
     void AddThing(Thing* thing);
 
+    void InitializeADC();
+
     std::string GetDescriptorsJson();
     bool GetStatesJson(std::string& json, bool delta = false);
     void Invoke(const cJSON* command);
     std::string GetThingStateJson(std::string name);
+    adc_oneshot_unit_handle_t adc_handle_ = nullptr;
 
 private:
     ThingManager() = default;

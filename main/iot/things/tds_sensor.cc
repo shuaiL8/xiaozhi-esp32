@@ -19,7 +19,7 @@ namespace iot {
 
 class TdsSensor : public Thing {
 private:
-    adc_channel_t adc_channel_ = ADC_CHANNEL_2;  // 默认使用ADC1通道2（GPIO3）
+    adc_channel_t adc_channel_ = ADC_CHANNEL_2;  // TDS模拟输入（GPIO3）
     adc_oneshot_unit_handle_t adc_handle_ = nullptr;  // ADC oneshot句柄
     float voltage_ = 0.0f;
     float tds_value_ = 0.0f;
@@ -27,13 +27,9 @@ private:
     float k_factor_ = 0.67f;
     TaskHandle_t sensor_task_ = nullptr;
 
-    void InitializeADC() {
-        // 配置ADC oneshot
-        adc_oneshot_unit_init_cfg_t init_config = {
-            .unit_id = ADC_UNIT_1,  // 对应ADC1
-            .ulp_mode = ADC_ULP_MODE_DISABLE
-        };
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle_));
+    void InitializeTDSChannel() {
+        auto& thing_manager = iot::ThingManager::GetInstance();
+        adc_handle_ = thing_manager.adc_handle_;
 
         // 配置通道参数
         adc_oneshot_chan_cfg_t channel_config = {
@@ -117,13 +113,13 @@ private:
         TdsSensor* sensor = static_cast<TdsSensor*>(arg);
         while (true) {
             sensor->UpdateTdsValue();
-            vTaskDelay(pdMS_TO_TICKS(2000));
+            vTaskDelay(pdMS_TO_TICKS(5000)); // 5秒间隔
         }
     }
 
 public:
     TdsSensor() : Thing("TdsSensor", "水质TDS传感器") {
-        InitializeADC();
+        InitializeTDSChannel();
         
         // 创建独立任务进行数据采集
         xTaskCreate(SensorTask, "tds_task", 4096, this, 5, &sensor_task_);
