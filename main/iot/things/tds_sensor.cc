@@ -72,16 +72,22 @@ private:
     }
 
     float ReadVoltage() {
-        int adc_reading = 0;
-        for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
-            int raw = 0;
-            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, adc_channel_, &raw));
-            adc_reading += raw;
+        auto& thing_manager = iot::ThingManager::GetInstance();
+        SemaphoreHandle_t adc_mutex = thing_manager.adc_mutex;
+        if (xSemaphoreTake(adc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            int adc_reading = 0;
+            for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
+                int raw = 0;
+                ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, adc_channel_, &raw));
+                adc_reading += raw;
+            }
+            adc_reading /= ADC_SAMPLE_COUNT;
+            xSemaphoreGive(adc_mutex);  // 释放锁
+            return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
+        } else {
+            // 处理超时错误
+            return -1.0f;
         }
-        adc_reading /= ADC_SAMPLE_COUNT;
-        
-        // 将ADC值转换为电压（V）
-        return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
     }
 
     void UpdateTdsValue() {

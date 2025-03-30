@@ -70,6 +70,7 @@ void ThingManager::Invoke(const cJSON* command) {
 }
 
 void ThingManager::InitializeADC() {
+    adc_mutex = xSemaphoreCreateMutex();
     adc_oneshot_unit_init_cfg_t init_config = {
         .unit_id = ADC_UNIT_1,
         .ulp_mode = ADC_ULP_MODE_DISABLE

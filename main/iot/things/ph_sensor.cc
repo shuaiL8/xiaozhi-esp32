@@ -24,6 +24,8 @@ private:
     float ph_value_ = 7.0f;
     float ph_voltage_ = 0.0f;
     float temp_voltage_ = 0.0f;
+    float slope = -14.0;    // 斜率 m
+    float intercept = 30.24; // 截距 b
     float calibration_offset_ = 0.0f;    // 校准偏移量
     float calibration_slope_ = 0.01786f; // 默认斜率3.3V/14pH=0.2357V/pH
     TaskHandle_t sensor_task_ = nullptr;
@@ -74,14 +76,22 @@ private:
     }
 
     float ReadVoltage() {
-        int adc_reading = 0;
-        for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
-            int raw = 0;
-            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, adc_channel_, &raw));
-            adc_reading += raw;
+        auto& thing_manager = iot::ThingManager::GetInstance();
+        SemaphoreHandle_t adc_mutex = thing_manager.adc_mutex;
+        if (xSemaphoreTake(adc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            int adc_reading = 0;
+            for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
+                int raw = 0;
+                ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, adc_channel_, &raw));
+                adc_reading += raw;
+            }
+            adc_reading /= ADC_SAMPLE_COUNT;
+            xSemaphoreGive(adc_mutex);  // 释放锁
+            return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
+        } else {
+            // 处理超时错误
+            return -1.0f;
         }
-        adc_reading /= ADC_SAMPLE_COUNT;
-        return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
     }
 
     void UpdatePhValue() {
@@ -89,7 +99,8 @@ private:
         float temperature_ = GetTemperature();
 
         // 基础pH计算（根据传感器特性调整公式）
-        float raw_ph = (ph_voltage_ - 1.45) / 0.17 + 7.0; // 示例公式
+        // float raw_ph = (ph_voltage_ - 1.45) / 0.17 + 7.0; // 示例公式
+        float raw_ph = slope * ph_voltage_ + intercept; 
         
         // 温度补偿（示例补偿系数0.03pH/°C）
         ph_value_ = raw_ph + (25.0f - temperature_) * 0.03;

@@ -11,6 +11,8 @@
 #include <functional>
 #include <map>
 #include "esp_adc/adc_oneshot.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 namespace iot {
 
@@ -31,6 +33,7 @@ public:
     bool GetStatesJson(std::string& json, bool delta = false);
     void Invoke(const cJSON* command);
     std::string GetThingStateJson(std::string name);
+    SemaphoreHandle_t adc_mutex = NULL;
     adc_oneshot_unit_handle_t adc_handle_ = nullptr;
 
 private:
