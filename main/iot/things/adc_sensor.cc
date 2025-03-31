@@ -11,33 +11,52 @@
 #include <cstring>
 #include <cstdio>
 
-#define TAG "TdsSensor"
+#define TAG "AdcSensor"
 #define DEFAULT_VREF 3300        // 默认参考电压3.3V
 #define ADC_SAMPLE_COUNT 16      // 采样次数
 
 namespace iot {
 
-class TdsSensor : public Thing {
+class AdcSensor : public Thing {
 private:
+    adc_channel_t ph_channel_ = ADC_CHANNEL_1;  // pH模拟输入（GPIO2）
     adc_channel_t tds_channel_ = ADC_CHANNEL_2;  // TDS模拟输入（GPIO3）
     adc_oneshot_unit_handle_t adc_handle_ = nullptr;  // ADC oneshot句柄
     float tds_voltage_ = 0.0f;
     float tds_value_ = 0.0f;
     float conductivity_ = 0.0f;
     float k_factor_ = 0.67f;
+    float ph_value_ = 7.0f;
+    float ph_voltage_ = 0.0f;
+    float slope = -14.0;    // 斜率 m
+    float intercept = 30.24; // 截距 b
+    float calibration_offset_ = 0.0f;    // 校准偏移量
+    float calibration_slope_ = 0.01786f; // 默认斜率3.3V/14pH=0.2357V/pH
     TaskHandle_t sensor_task_ = nullptr;
 
-    void InitializeTDSChannel() {
-        auto& thing_manager = iot::ThingManager::GetInstance();
-        adc_handle_ = thing_manager.adc_handle_;
+    void InitializeChannel() {
+        adc_oneshot_unit_init_cfg_t init_config = {
+            .unit_id = ADC_UNIT_1,
+            .ulp_mode = ADC_ULP_MODE_DISABLE
+        };
+        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle_));
 
         // 配置通道参数
-        adc_oneshot_chan_cfg_t channel_config = {
+        adc_oneshot_chan_cfg_t channel_config_tds = {
             .atten = ADC_ATTEN_DB_11,
             .bitwidth = ADC_BITWIDTH_12  // 12位精度
         };
         ESP_ERROR_CHECK(adc_oneshot_config_channel(
-            adc_handle_, tds_channel_, &channel_config));
+            adc_handle_, tds_channel_, &channel_config_tds));
+
+        // 配置通道参数
+        adc_oneshot_chan_cfg_t channel_config_ph = {
+            .atten = ADC_ATTEN_DB_11,
+            .bitwidth = ADC_BITWIDTH_12  // 12位精度
+        };
+
+        ESP_ERROR_CHECK(adc_oneshot_config_channel(
+            adc_handle_, ph_channel_, &channel_config_ph));
     }
 
     float GetTemperature() {
@@ -72,22 +91,14 @@ private:
     }
 
     float ReadTdsVoltage() {
-        auto& thing_manager = iot::ThingManager::GetInstance();
-        SemaphoreHandle_t adc_mutex = thing_manager.adc_mutex;
-        if (xSemaphoreTake(adc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            int adc_reading = 0;
-            for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
-                int raw = 0;
-                ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, tds_channel_, &raw));
-                adc_reading += raw;
-            }
-            adc_reading /= ADC_SAMPLE_COUNT;
-            xSemaphoreGive(adc_mutex);  // 释放锁
-            return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
-        } else {
-            // 处理超时错误
-            return -1.0f;
+        int adc_reading = 0;
+        for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
+            int raw = 0;
+            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, tds_channel_, &raw));
+            adc_reading += raw;
         }
+        adc_reading /= ADC_SAMPLE_COUNT;
+        return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
     }
 
     void UpdateTdsValue() {
@@ -107,7 +118,6 @@ private:
             std::stringstream ss;
             ss << std::fixed << std::setprecision(2) << conductivity_;
             std::string conductivity_str = ss.str();
-            std::string states = "{\"name\":\"TdsSensor\",\"state\":{\"conductivity\":\"" + conductivity_str + "\"}}";
             std::string message = "警告！检测到电导率异常（当前电导率为" + conductivity_str + "μS/cm）,请立即检查水缸情况！";
             
             app.Schedule([this, &app, message]() {
@@ -117,17 +127,57 @@ private:
         }
     }
 
+    float ReadPhVoltage() {
+        int adc_reading = 0;
+        for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
+            int raw = 0;
+            ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, ph_channel_, &raw));
+            adc_reading += raw;
+        }
+        adc_reading /= ADC_SAMPLE_COUNT;
+        return (float)adc_reading * DEFAULT_VREF / 4095.0f / 1000.0;
+    }
+
+    void UpdatePhValue() {
+        ph_voltage_ = ReadPhVoltage(); 
+        float temperature_ = GetTemperature();
+
+        // 基础pH计算（根据传感器特性调整公式）
+        // float raw_ph = (ph_voltage_ - 1.45) / 0.17 + 7.0; // 示例公式
+        float raw_ph = slope * ph_voltage_ + intercept; 
+        
+        // 温度补偿（示例补偿系数0.03pH/°C）
+        ph_value_ = raw_ph + (25.0f - temperature_) * 0.03;
+        ph_value_ = static_cast<float>(static_cast<int>(ph_value_ * 100 + 0.5)) / 100;
+
+        ESP_LOGI(TAG, "电压: %.2fV | 温度: %.2f°C | pH值: %.2f", 
+                ph_voltage_, temperature_, ph_value_);
+
+        auto& app = Application::GetInstance();
+        if (ph_value_ < 4.0f || ph_value_ > 10.0f) {
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(2) << ph_value_;
+            std::string ph_str = ss.str();
+            std::string message = "警告！检测到pH值异常（当前值为" + ph_str + "）！";
+
+            app.Schedule([this, &app, message]() {
+                app.Alert(Lang::Strings::WARNING, message.c_str(), "sad", Lang::Sounds::P3_SUCCESS);
+            });
+        }
+    }
+
     static void SensorTask(void* arg) {
-        TdsSensor* sensor = static_cast<TdsSensor*>(arg);
+        AdcSensor* sensor = static_cast<AdcSensor*>(arg);
         while (true) {
             sensor->UpdateTdsValue();
+            sensor->UpdatePhValue();
             vTaskDelay(pdMS_TO_TICKS(60000)); // 60秒间隔
         }
     }
 
 public:
-    TdsSensor() : Thing("TdsSensor", "水质TDS传感器") {
-        InitializeTDSChannel();
+    AdcSensor() : Thing("AdcSensor", "水质传感器") {
+        InitializeChannel();
         
         // 创建独立任务进行数据采集
         xTaskCreate(SensorTask, "tds_task", 4096, this, 1, &sensor_task_);
@@ -140,15 +190,23 @@ public:
         properties_.AddFloatProperty("tds", "当前水TDS值，单位ppm", [this]() -> float {
             return tds_value_;
         });
+        properties_.AddFloatProperty("ph", "当前pH值（0-14）", [this]() -> float {
+            return ph_value_;
+        });
 
         // 定义手动刷新方法
-        methods_.AddMethod("Refresh", "立即刷新TDS数据", ParameterList(), 
+        methods_.AddMethod("RefreshTds", "立即刷新TDS数据", ParameterList(), 
             [this](const ParameterList&) {
                 UpdateTdsValue();
         });
+
+        methods_.AddMethod("RefreshPh", "立即刷新pH数据", ParameterList(), 
+            [this](const ParameterList&) {
+                UpdatePhValue();
+        });
     }
 
-    ~TdsSensor() {
+    ~AdcSensor() {
         if (sensor_task_) vTaskDelete(sensor_task_);
         if (adc_handle_) adc_oneshot_del_unit(adc_handle_);  // 释放ADC资源
     }
@@ -156,4 +214,4 @@ public:
 
 } // namespace iot
 
-DECLARE_THING(TdsSensor);
+DECLARE_THING(AdcSensor);

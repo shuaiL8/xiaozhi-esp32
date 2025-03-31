@@ -12,11 +12,7 @@ namespace iot {
 
 class TemperatureSensor : public Thing {
 private:
-#ifdef CONFIG_IDF_TARGET_ESP32
-    gpio_num_t gpio_num_ = GPIO_NUM_9;
-#else
     gpio_num_t gpio_num_ = GPIO_NUM_10;
-#endif
     float temperature_ = 0.0f;
     TaskHandle_t sensor_task_ = nullptr;
 
@@ -75,7 +71,7 @@ private:
         return byte;
     }
 
-    float ReadTemperature() {
+    void UpdateTemperature() {
         OneWireReset();
         WriteByte(0xCC); // Skip ROM
         WriteByte(0x44); // Convert T
@@ -89,17 +85,17 @@ private:
         for (int i = 0; i < 9; i++) {
             data[i] = ReadByte();
         }
-
         int16_t raw = (data[1] << 8) | data[0];
-        return raw / 16.0f;
+        float temp = raw / 16.0f;
+
+        temperature_ = static_cast<float>(static_cast<int>(temp * 100 + 0.5)) / 100;
+        ESP_LOGI(TAG, "当前温度: %.2f°C", temperature_);
     }
 
     static void SensorTask(void* arg) {
         TemperatureSensor* sensor = reinterpret_cast<TemperatureSensor*>(arg);
         while (true) {
-            float temp = sensor->ReadTemperature();
-            sensor->temperature_ = temp;
-            ESP_LOGI(TAG, "当前温度: %.2f°C", temp);
+            sensor->UpdateTemperature();
             vTaskDelay(pdMS_TO_TICKS(2000)); // 2秒间隔
         }
     }
@@ -112,15 +108,15 @@ public:
         xTaskCreate(SensorTask, "temp_task", 4096, this, 5, &sensor_task_);
 
         // 定义设备属性
-        properties_.AddFloatProperty("temperature", "当前水温值，保留两个小数点，单位°C", [this]() -> float {
+        properties_.AddFloatProperty("temperature", "当前水温值，单位°C", [this]() -> float {
             return temperature_;
         });
 
         // 定义手动刷新方法（可选）
         methods_.AddMethod("Refresh", "立即刷新温度", ParameterList(), 
             [this](const ParameterList&) {
-                temperature_ = ReadTemperature();
-            });
+                UpdateTemperature();
+        });
     }
 
     ~TemperatureSensor() {

@@ -13,17 +13,16 @@
 
 #define TAG "PhSensor"
 #define DEFAULT_VREF 3300        // 默认参考电压3.3V
-#define ADC_SAMPLE_COUNT 32      // 采样次数
+#define ADC_SAMPLE_COUNT 16      // 采样次数
 
 namespace iot {
 
 class PhSensor : public Thing {
 private:
-    adc_channel_t adc_channel_ = ADC_CHANNEL_1;    // pH模拟输入（GPIO2）
+    adc_channel_t ph_channel_ = ADC_CHANNEL_1;    // pH模拟输入（GPIO2）
     adc_oneshot_unit_handle_t adc_handle_ = nullptr;  // ADC oneshot句柄
     float ph_value_ = 7.0f;
     float ph_voltage_ = 0.0f;
-    float temp_voltage_ = 0.0f;
     float slope = -14.0;    // 斜率 m
     float intercept = 30.24; // 截距 b
     float calibration_offset_ = 0.0f;    // 校准偏移量
@@ -41,7 +40,7 @@ private:
         };
 
         ESP_ERROR_CHECK(adc_oneshot_config_channel(
-            adc_handle_, adc_channel_, &channel_config));
+            adc_handle_, ph_channel_, &channel_config));
     }
 
     float GetTemperature() {
@@ -75,14 +74,14 @@ private:
         return temperature;
     }
 
-    float ReadVoltage() {
+    float ReadPhVoltage() {
         auto& thing_manager = iot::ThingManager::GetInstance();
         SemaphoreHandle_t adc_mutex = thing_manager.adc_mutex;
         if (xSemaphoreTake(adc_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             int adc_reading = 0;
             for (int i = 0; i < ADC_SAMPLE_COUNT; i++) {
                 int raw = 0;
-                ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, adc_channel_, &raw));
+                ESP_ERROR_CHECK(adc_oneshot_read(adc_handle_, ph_channel_, &raw));
                 adc_reading += raw;
             }
             adc_reading /= ADC_SAMPLE_COUNT;
@@ -95,7 +94,7 @@ private:
     }
 
     void UpdatePhValue() {
-        ph_voltage_ = ReadVoltage(); 
+        ph_voltage_ = ReadPhVoltage(); 
         float temperature_ = GetTemperature();
 
         // 基础pH计算（根据传感器特性调整公式）
@@ -104,6 +103,7 @@ private:
         
         // 温度补偿（示例补偿系数0.03pH/°C）
         ph_value_ = raw_ph + (25.0f - temperature_) * 0.03;
+        ph_value_ = static_cast<float>(static_cast<int>(ph_value_ * 100 + 0.5)) / 100;
 
         ESP_LOGI(TAG, "电压: %.2fV | 温度: %.2f°C | pH值: %.2f", 
                 ph_voltage_, temperature_, ph_value_);
@@ -126,7 +126,7 @@ private:
         PhSensor* sensor = static_cast<PhSensor*>(arg);
         while (true) {
             sensor->UpdatePhValue();
-            vTaskDelay(pdMS_TO_TICKS(5000)); // 5秒间隔
+            vTaskDelay(pdMS_TO_TICKS(60000)); // 60秒间隔
         }
     }
 
@@ -134,28 +134,18 @@ public:
     PhSensor() : Thing("PhSensor", "水质pH传感器") {
         InitializePHChannel();
 
-        xTaskCreate(SensorTask, "ph_task", 4096, this, 5, &sensor_task_);
+        xTaskCreate(SensorTask, "ph_task", 4096, this, 1, &sensor_task_);
 
         // 设备属性定义
         properties_.AddFloatProperty("ph", "当前pH值（0-14）", [this]() -> float {
             return ph_value_;
         });
 
-        // // 校准方法
-        // methods_.AddMethod("Calibrate", "校准ph传感器（需要提供标准液pH值和电压）", ParameterList()
-        //         .AddFloat("ph1", "第一次校准的标准pH值")
-        //         .AddFloat("voltage1", "第一次校准的电压值")
-        //         .AddFloat("ph2", "第二次校准的标准pH值")
-        //         .AddFloat("voltage2", "第二次校准的电压值"),
-        //     [this](const ParameterList& params) {
-        //         float ph1 = params.GetFloat("ph1");
-        //         float v1 = params.GetFloat("voltage1");
-        //         float ph2 = params.GetFloat("ph2");
-        //         float v2 = params.GetFloat("voltage2");
-                
-        //         calibration_slope_ = (ph2 - ph1) / (v2 - v1);
-        //         calibration_offset_ = ph1 - (v1 * calibration_slope_);
-        //     });
+        // 定义手动刷新方法
+        methods_.AddMethod("Refresh", "立即刷新pH数据", ParameterList(), 
+            [this](const ParameterList&) {
+                UpdatePhValue();
+        });
     }
 
     ~PhSensor() {

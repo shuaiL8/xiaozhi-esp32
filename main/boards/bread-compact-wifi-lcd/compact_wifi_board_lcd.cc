@@ -153,12 +153,13 @@ private:
         thing_manager.AddThing(iot::CreateThing("Speaker"));
         thing_manager.AddThing(iot::CreateThing("Screen"));
         thing_manager.AddThing(iot::CreateThing("Lamp"));
-        thing_manager.AddThing(iot::CreateThing("TemperatureSensor"));
         thing_manager.AddThing(iot::CreateThing("Timer"));
+        thing_manager.AddThing(iot::CreateThing("TemperatureSensor"));
         // ADC Sensor
-        thing_manager.InitializeADC();
-        thing_manager.AddThing(iot::CreateThing("TdsSensor"));
-        thing_manager.AddThing(iot::CreateThing("PhSensor"));
+        // thing_manager.InitializeADC();
+        thing_manager.AddThing(iot::CreateThing("AdcSensor"));
+        // thing_manager.AddThing(iot::CreateThing("TdsSensor"));
+        // thing_manager.AddThing(iot::CreateThing("PhSensor"));
     }
 
 public:

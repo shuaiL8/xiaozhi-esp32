@@ -28,7 +28,9 @@ namespace iot {
 
         void notify(std::string message) {
             auto &app = Application::GetInstance();
-            app.Alert(Lang::Strings::INFO, message.c_str(), "happy", Lang::Sounds::P3_SUCCESS);
+            app.Schedule([this, &app, message]() {
+                app.Alert(Lang::Strings::INFO, message.c_str(), "happy", Lang::Sounds::P3_SUCCESS);
+            });
         }
 
         static void TimerTask(void *arg) {
@@ -44,7 +46,7 @@ namespace iot {
                     timer->notify("计时完成!");
                     timer->toggle_timer_ = false;
                 }
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                vTaskDelay(pdMS_TO_TICKS(1000)); // 1秒间隔
             }
         }
 
